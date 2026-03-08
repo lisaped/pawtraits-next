@@ -86,16 +86,27 @@ export default function PetPortraitStudio() {
   const handleFile = (file) => {
     if (!file || !file.type.startsWith("image/")) return;
     setPhotoUrl(URL.createObjectURL(file));
-    setPhotoMediaType(file.type);
+    setPhotoMediaType("image/jpeg");
     setGeneratedImage(null);
     setGenError(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = reader.result.split(",")[1];
+
+    // Resize image to max 1024px before base64 encoding to keep payload small
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const b64 = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
       setPhotoBase64(b64);
-      fetchDescription(b64, file.type);
+      fetchDescription(b64, "image/jpeg");
     };
-    reader.readAsDataURL(file);
+    img.src = URL.createObjectURL(file);
     setStep("style");
   };
 
