@@ -23,8 +23,8 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         image_url: `data:${mediaType || 'image/jpeg'};base64,${imageBase64}`,
-        prompt: `portrait of a pet, ${prompt}, professional art, high quality, masterpiece`,
-        strength: 0.85,
+        prompt: `same pet, same breed, same face, same fur color and markings, ${prompt}, preserve the exact appearance of the original animal, professional art, high quality`,
+        strength: 0.65,
         num_inference_steps: 28,
         guidance_scale: 3.5,
         num_images: 1,
