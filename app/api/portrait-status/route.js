@@ -11,13 +11,12 @@ export async function GET(request) {
   const FAL_KEY = process.env.FAL_API_KEY
   if (!FAL_KEY) return NextResponse.json({ error: 'FAL_API_KEY not configured' }, { status: 500 })
 
-  const BASE = 'https://queue.fal.run/fal-ai/flux/dev/image-to-image'
+  // NOTE: Status/result checks use base model ID only (no subpath)
+  const BASE = 'https://queue.fal.run/fal-ai/flux'
+  const headers = { 'Authorization': `Key ${FAL_KEY}` }
 
   try {
-    // Check status
-    const statusResp = await fetch(`${BASE}/requests/${requestId}/status`, {
-      headers: { 'Authorization': `Key ${FAL_KEY}` }
-    })
+    const statusResp = await fetch(`${BASE}/requests/${requestId}/status`, { headers })
     const statusText = await statusResp.text()
     console.log('Status:', statusResp.status, statusText.substring(0, 200))
 
@@ -28,10 +27,7 @@ export async function GET(request) {
     const { status } = JSON.parse(statusText)
 
     if (status === 'COMPLETED') {
-      // Fetch result
-      const resultResp = await fetch(`${BASE}/requests/${requestId}`, {
-        headers: { 'Authorization': `Key ${FAL_KEY}` }
-      })
+      const resultResp = await fetch(`${BASE}/requests/${requestId}`, { headers })
       const resultText = await resultResp.text()
       console.log('Result:', resultResp.status, resultText.substring(0, 200))
 
@@ -41,7 +37,7 @@ export async function GET(request) {
 
       const result = JSON.parse(resultText)
       const imageUrl = result?.images?.[0]?.url
-      if (!imageUrl) return NextResponse.json({ error: 'No image URL in: ' + resultText }, { status: 500 })
+      if (!imageUrl) return NextResponse.json({ error: 'No image URL: ' + resultText }, { status: 500 })
 
       return NextResponse.json({ status: 'COMPLETED', imageUrl })
     }
@@ -50,11 +46,10 @@ export async function GET(request) {
       return NextResponse.json({ status: 'FAILED', error: 'Generation failed' }, { status: 500 })
     }
 
-    // Still in queue or processing
     return NextResponse.json({ status: status || 'IN_QUEUE' })
 
   } catch (err) {
-    console.error('portrait-status crash:', err.message)
+    console.error('portrait-status error:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
