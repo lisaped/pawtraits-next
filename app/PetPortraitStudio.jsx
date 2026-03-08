@@ -149,66 +149,23 @@ export default function PetPortraitStudio() {
       : selectedStyle.prompt;
 
     try {
-      // Step 1: Submit job — returns requestId immediately
-      const submitResp = await fetch("/api/generate-portrait", {
+      const resp = await fetch("/api/generate-portrait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: photoBase64, mediaType: photoMediaType, prompt }),
       });
-      const submitData = await submitResp.json();
-
-      if (!submitData.requestId) {
-        setGenError(submitData.error || "Failed to start generation.");
-        clearInterval(msgInterval.current);
-        setGenerating(false);
-        return;
+      const data = await resp.json();
+      if (data.imageUrl) {
+        setGeneratedImage(data.imageUrl);
+        setStep("order");
+      } else {
+        setGenError(data.error || "Generation failed. Please try again.");
       }
-
-      // Step 2: Poll for result every 3 seconds (up to 90 seconds)
-      const { requestId } = submitData;
-      let attempts = 0;
-      const maxAttempts = 30;
-
-      const poll = async () => {
-        attempts++;
-        try {
-          const pollResp = await fetch(`/api/portrait-status?requestId=${requestId}`);
-          const pollData = await pollResp.json();
-
-          if (pollData.status === "COMPLETED" && pollData.imageUrl) {
-            setGeneratedImage(pollData.imageUrl);
-            setStep("order");
-            clearInterval(msgInterval.current);
-            setGenerating(false);
-          } else if (pollData.status === "FAILED") {
-            setGenError("Generation failed. Please try a different photo or style.");
-            clearInterval(msgInterval.current);
-            setGenerating(false);
-          } else if (attempts >= maxAttempts) {
-            setGenError("Generation timed out. Please try again.");
-            clearInterval(msgInterval.current);
-            setGenerating(false);
-          } else {
-            setTimeout(poll, 3000);
-          }
-        } catch {
-          if (attempts >= maxAttempts) {
-            setGenError("Connection error. Please try again.");
-            clearInterval(msgInterval.current);
-            setGenerating(false);
-          } else {
-            setTimeout(poll, 3000);
-          }
-        }
-      };
-
-      setTimeout(poll, 3000);
-
     } catch (err) {
-      setGenError("Connection error. Please check your internet and try again.");
-      clearInterval(msgInterval.current);
-      setGenerating(false);
+      setGenError("Connection error. Please try again.");
     }
+    clearInterval(msgInterval.current);
+    setGenerating(false);
   };
 
   const onDrop = useCallback((e) => {
