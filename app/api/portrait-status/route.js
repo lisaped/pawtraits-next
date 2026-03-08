@@ -1,36 +1,60 @@
 import { NextResponse } from 'next/server'
 
-export async function POST(req) {
-  const { imageBase64, mediaType } = await req.json()
-  if (!imageBase64 || !mediaType) {
-    return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
-  }
+export const maxDuration = 10
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url)
+  const requestId = searchParams.get('requestId')
+
+  if (!requestId) return NextResponse.json({ error: 'Missing requestId' }, { status: 400 })
+
+  const FAL_KEY = process.env.FAL_API_KEY
+  if (!FAL_KEY) return NextResponse.json({ error: 'FAL_API_KEY not configured' }, { status: 500 })
+
+  const BASE = 'https://queue.fal.run/fal-ai/flux/dev/image-to-image'
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 200,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-            { type: 'text', text: 'Describe this pet in 2 warm, poetic sentences as if writing marketing copy for a luxury portrait — mention breed if identifiable, personality suggested by expression, and one charming physical detail. Be concise and enchanting.' }
-          ]
-        }]
-      })
+    // Check status
+    const statusResp = await fetch(`${BASE}/requests/${requestId}/status`, {
+      headers: { 'Authorization': `Key ${FAL_KEY}` }
     })
+    const statusText = await statusResp.text()
+    console.log('Status:', statusResp.status, statusText.substring(0, 200))
 
-    const data = await response.json()
-    const description = data.content?.find(b => b.type === 'text')?.text || ''
-    return NextResponse.json({ description })
+    if (!statusResp.ok) {
+      return NextResponse.json({ error: `Status failed (${statusResp.status}): ${statusText}` }, { status: 500 })
+    }
+
+    const { status } = JSON.parse(statusText)
+
+    if (status === 'COMPLETED') {
+      // Fetch result
+      const resultResp = await fetch(`${BASE}/requests/${requestId}`, {
+        headers: { 'Authorization': `Key ${FAL_KEY}` }
+      })
+      const resultText = await resultResp.text()
+      console.log('Result:', resultResp.status, resultText.substring(0, 200))
+
+      if (!resultResp.ok) {
+        return NextResponse.json({ error: `Result failed: ${resultText}` }, { status: 500 })
+      }
+
+      const result = JSON.parse(resultText)
+      const imageUrl = result?.images?.[0]?.url
+      if (!imageUrl) return NextResponse.json({ error: 'No image URL in: ' + resultText }, { status: 500 })
+
+      return NextResponse.json({ status: 'COMPLETED', imageUrl })
+    }
+
+    if (status === 'FAILED') {
+      return NextResponse.json({ status: 'FAILED', error: 'Generation failed' }, { status: 500 })
+    }
+
+    // Still in queue or processing
+    return NextResponse.json({ status: status || 'IN_QUEUE' })
+
   } catch (err) {
+    console.error('portrait-status crash:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-export const maxDuration = 60
+export const maxDuration = 10
 
 export async function POST(req) {
   let body
@@ -15,8 +15,7 @@ export async function POST(req) {
   if (!FAL_KEY) return NextResponse.json({ error: 'FAL_API_KEY not configured' }, { status: 500 })
 
   try {
-    // Use synchronous fal.run endpoint — waits for result, no polling needed
-    const resp = await fetch('https://fal.run/fal-ai/flux/dev/image-to-image', {
+    const resp = await fetch('https://queue.fal.run/fal-ai/flux/dev/image-to-image', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -34,18 +33,16 @@ export async function POST(req) {
     })
 
     const text = await resp.text()
-    console.log('fal.run response:', resp.status, text.substring(0, 300))
+    console.log('Queue response:', resp.status, text.substring(0, 200))
 
     if (!resp.ok) return NextResponse.json({ error: `fal.ai (${resp.status}): ${text}` }, { status: 500 })
 
     const data = JSON.parse(text)
-    const imageUrl = data?.images?.[0]?.url
-    if (!imageUrl) return NextResponse.json({ error: 'No image returned: ' + text }, { status: 500 })
+    if (!data.request_id) return NextResponse.json({ error: 'No request_id: ' + text }, { status: 500 })
 
-    return NextResponse.json({ imageUrl })
+    return NextResponse.json({ requestId: data.request_id })
 
   } catch (err) {
-    console.error('generate-portrait error:', err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

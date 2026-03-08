@@ -149,23 +149,69 @@ export default function PetPortraitStudio() {
       : selectedStyle.prompt;
 
     try {
-      const resp = await fetch("/api/generate-portrait", {
+      // Submit job — returns requestId in under 10s
+      const submitResp = await fetch("/api/generate-portrait", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: photoBase64, mediaType: photoMediaType, prompt }),
       });
-      const data = await resp.json();
-      if (data.imageUrl) {
-        setGeneratedImage(data.imageUrl);
-        setStep("order");
-      } else {
-        setGenError(data.error || "Generation failed. Please try again.");
+      const submitData = await submitResp.json();
+
+      if (!submitData.requestId) {
+        setGenError(submitData.error || "Failed to start generation.");
+        clearInterval(msgInterval.current);
+        setGenerating(false);
+        return;
       }
+
+      // Poll every 4 seconds until done (up to 2 minutes)
+      const { requestId } = submitData;
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      const poll = async () => {
+        attempts++;
+        try {
+          const pollResp = await fetch(`/api/portrait-status?requestId=${encodeURIComponent(requestId)}`);
+          const pollData = await pollResp.json();
+          console.log("Poll result:", pollData);
+
+          if (pollData.status === "COMPLETED" && pollData.imageUrl) {
+            setGeneratedImage(pollData.imageUrl);
+            setStep("order");
+            clearInterval(msgInterval.current);
+            setGenerating(false);
+          } else if (pollData.status === "FAILED" || pollData.error) {
+            setGenError(pollData.error || "Generation failed. Please try again.");
+            clearInterval(msgInterval.current);
+            setGenerating(false);
+          } else if (attempts >= maxAttempts) {
+            setGenError("Generation timed out after 2 minutes. Please try again.");
+            clearInterval(msgInterval.current);
+            setGenerating(false);
+          } else {
+            setTimeout(poll, 4000);
+          }
+        } catch (err) {
+          console.error("Poll error:", err);
+          if (attempts >= maxAttempts) {
+            setGenError("Connection error while checking status.");
+            clearInterval(msgInterval.current);
+            setGenerating(false);
+          } else {
+            setTimeout(poll, 4000);
+          }
+        }
+      };
+
+      // Start polling after 5 seconds
+      setTimeout(poll, 5000);
+
     } catch (err) {
-      setGenError("Connection error. Please try again.");
+      setGenError("Connection error: " + err.message);
+      clearInterval(msgInterval.current);
+      setGenerating(false);
     }
-    clearInterval(msgInterval.current);
-    setGenerating(false);
   };
 
   const onDrop = useCallback((e) => {
